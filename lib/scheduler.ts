@@ -66,17 +66,23 @@ export function initScheduler() {
       }
     }
 
-    // SMS 30-min event reminders
-    const upcomingEvents = await prisma.calendarEvent.findMany({
-      where: { startTime: { gte: windowStart, lte: windowEnd } },
-      include: { member: true },
-    })
-    for (const event of upcomingEvents) {
-      const smsKey = `event-reminder-${event.id}`
-      const already = await prisma.sentSms.findUnique({ where: { key: smsKey } })
-      if (!already) {
-        await prisma.sentSms.create({ data: { key: smsKey } })
-        await sendEventReminder({ title: event.title, startTime: event.startTime, memberId: event.memberId })
+    // Per-member event reminders based on their preferred timing
+    const members = await prisma.familyMember.findMany({ where: { email: { not: null } } })
+    for (const member of members) {
+      const mins = member.eventReminderMinutes || 30
+      const memberWindowStart = new Date(now.getTime() + (mins - 1) * 60 * 1000)
+      const memberWindowEnd = new Date(now.getTime() + (mins + 1) * 60 * 1000)
+      const upcomingEvents = await prisma.calendarEvent.findMany({
+        where: { memberId: member.id, startTime: { gte: memberWindowStart, lte: memberWindowEnd } },
+        include: { member: true },
+      })
+      for (const event of upcomingEvents) {
+        const reminderKey = `event-reminder-${event.id}-${member.id}`
+        const already = await prisma.sentSms.findUnique({ where: { key: reminderKey } })
+        if (!already) {
+          await prisma.sentSms.create({ data: { key: reminderKey } })
+          await sendEventReminder({ title: event.title, startTime: event.startTime, memberId: event.memberId })
+        }
       }
     }
   })
@@ -113,29 +119,53 @@ export function initScheduler() {
     }
   })
 
-  // Daily agenda emails at 7:00 AM
-  schedule.scheduleJob('0 7 * * *', async () => {
+  // Every minute: check if it's time to send any member's daily agenda
+  schedule.scheduleJob('* * * * *', async () => {
     try {
-      const today = new Date()
+      const now = new Date()
+      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      const today = new Date(now)
       today.setHours(0, 0, 0, 0)
       const tomorrow = new Date(today)
       tomorrow.setDate(tomorrow.getDate() + 1)
+
+      // Find members whose agenda time matches current minute
+      const members = await prisma.familyMember.findMany({
+        where: { email: { not: null }, agendaEmailEnabled: true },
+      })
+      const dueMembers = members.filter(m => (m.agendaEmailTime || '07:00') === currentTime)
+      if (dueMembers.length === 0) return
+
       const in3Days = new Date(today)
       in3Days.setDate(in3Days.getDate() + 3)
 
-      const members = await prisma.familyMember.findMany()
+      // Use UTC date range for queries but filter all-day events by UTC date
       const allTodayEvents = await prisma.calendarEvent.findMany({
-        where: { startTime: { gte: today, lt: tomorrow } },
+        where: {
+          OR: [
+            // Timed events: use local date range
+            { allDay: false, startTime: { gte: today, lt: tomorrow } },
+            // All-day events: check if UTC date matches today's local date
+            { allDay: true, startTime: { gte: today, lt: tomorrow } },
+          ],
+        },
         include: { member: true },
         orderBy: { startTime: 'asc' },
       })
+      // Filter all-day events to match by UTC date (avoid timezone shift)
+      const filteredTodayEvents = allTodayEvents.filter(e => {
+        if (!e.allDay) return true
+        const utcDate = e.startTime.toISOString().split('T')[0]
+        const localDate = today.toISOString().split('T')[0]
+        return utcDate === localDate
+      })
+
       const upcomingEvents = await prisma.calendarEvent.findMany({
         where: { startTime: { gte: tomorrow, lt: in3Days } },
         include: { member: true },
         orderBy: { startTime: 'asc' },
       })
 
-      // Get today's meals
       const weekStart = new Date(today)
       weekStart.setDate(today.getDate() - today.getDay())
       weekStart.setHours(0, 0, 0, 0)
@@ -148,13 +178,12 @@ export function initScheduler() {
         dinner: todayMeals.find(m => m.mealType === 'dinner')?.name,
       }
 
-      for (const member of members) {
-        if (!member.email || !member.agendaEmailEnabled) continue
+      for (const member of dueMembers) {
         const emailKey = `agenda-${member.id}-${today.toISOString().split('T')[0]}`
         const alreadySent = await prisma.sentEmail.findUnique({ where: { key: emailKey } })
         if (alreadySent) continue
 
-        const myEvents = allTodayEvents.filter(e => e.memberId === member.id)
+        const myEvents = filteredTodayEvents.filter(e => e.memberId === member.id)
         const myChores = await prisma.todo.findMany({
           where: { assigneeId: member.id, category: 'chore', done: false, dueDate: { gte: today, lt: tomorrow } },
         })
@@ -162,7 +191,7 @@ export function initScheduler() {
         const html = buildAgendaEmail({
           memberName: member.name,
           date: today,
-          allEvents: allTodayEvents.map(e => ({
+          allEvents: filteredTodayEvents.map(e => ({
             title: e.title,
             startTime: e.startTime,
             endTime: e.endTime,
@@ -188,7 +217,7 @@ export function initScheduler() {
 
         const familyName = process.env.NEXT_PUBLIC_FAMILY_NAME || 'Hill Family'
         const subject = `📅 ${familyName} - Today's Agenda - ${today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`
-        await sendEmail(member.email, subject, html)
+        await sendEmail(member.email!, subject, html)
         await prisma.sentEmail.create({ data: { key: emailKey } })
         console.log(`[scheduler] Sent agenda email to ${member.name} (${member.email})`)
       }

@@ -14,13 +14,8 @@ if [ -f "$CONFIG_PATH" ]; then
     GOOGLE_CLIENT_ID=$(jq --raw-output '.google_client_id // empty' "$CONFIG_PATH")
     GOOGLE_CLIENT_SECRET=$(jq --raw-output '.google_client_secret // empty' "$CONFIG_PATH")
     GOOGLE_REDIRECT_URI=$(jq --raw-output '.google_redirect_uri // empty' "$CONFIG_PATH")
-    VAPID_PUBLIC_KEY=$(jq --raw-output '.vapid_public_key // empty' "$CONFIG_PATH")
-    VAPID_PRIVATE_KEY=$(jq --raw-output '.vapid_private_key // empty' "$CONFIG_PATH")
     GMAIL_USER=$(jq --raw-output '.gmail_user // empty' "$CONFIG_PATH")
     GMAIL_APP_PASSWORD=$(jq --raw-output '.gmail_app_password // empty' "$CONFIG_PATH")
-    TWILIO_ACCOUNT_SID=$(jq --raw-output '.twilio_account_sid // empty' "$CONFIG_PATH")
-    TWILIO_AUTH_TOKEN=$(jq --raw-output '.twilio_auth_token // empty' "$CONFIG_PATH")
-    TWILIO_FROM_NUMBER=$(jq --raw-output '.twilio_from_number // empty' "$CONFIG_PATH")
 fi
 
 # Defaults
@@ -36,14 +31,8 @@ export DATABASE_URL
 export GOOGLE_CLIENT_ID
 export GOOGLE_CLIENT_SECRET
 export GOOGLE_REDIRECT_URI
-export VAPID_PUBLIC_KEY
-export VAPID_PRIVATE_KEY
-export NEXT_PUBLIC_VAPID_PUBLIC_KEY="$VAPID_PUBLIC_KEY"
 export GMAIL_USER
 export GMAIL_APP_PASSWORD
-export TWILIO_ACCOUNT_SID
-export TWILIO_AUTH_TOKEN
-export TWILIO_FROM_NUMBER
 export NODE_ENV=production
 export PORT=3000
 export HOSTNAME=0.0.0.0

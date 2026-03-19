@@ -81,12 +81,12 @@ export default function Home() {
 
   const RIGHT_TABS: { id: RightTab; label: string }[] = [
     { id: 'today', label: 'Today' },
+    { id: 'meals', label: 'Kitchen' },
     { id: 'smarthome', label: 'Smart Home' },
     { id: 'cameras', label: 'Cameras' },
-    { id: 'meals', label: 'Meals' },
   ]
 
-  const tabOrder: RightTab[] = ['today', 'smarthome', 'cameras', 'meals']
+  const tabOrder: RightTab[] = ['today', 'meals', 'smarthome', 'cameras']
   const swipeLeft = useCallback(() => {
     setRightTab(t => tabOrder[Math.min(tabOrder.indexOf(t) + 1, tabOrder.length - 1)])
   }, [])
@@ -123,8 +123,8 @@ export default function Home() {
           </div>
           {/* Right */}
           <div style={{ flexShrink: 0, width: 200, textAlign: 'right', paddingRight: 48 }}>
-            <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}>{timeStr}</div>
-            <div style={{ fontSize: 9, color: '#4a4d6a' }}>{dateStr}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1.2, textShadow: '0 0 20px rgba(59,130,246,0.3)' }}>{timeStr}</div>
+            <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{dateStr}</div>
           </div>
           {/* Settings gear */}
           <button onClick={() => setSettingsOpen(true)} style={{
@@ -147,11 +147,12 @@ export default function Home() {
             <div style={{ display: 'flex', flexShrink: 0, height: 40, background: '#0a0d14', borderBottom: '1px solid #1a1d2e' }}>
               {RIGHT_TABS.map(t => (
                 <button key={t.id} onClick={() => setRightTab(t.id)} style={{
-                  height: 40, padding: '0 16px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                  background: 'transparent', border: 'none',
-                  color: rightTab === t.id ? '#fff' : '#4a4d6a',
+                  height: 40, padding: '0 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  background: rightTab === t.id ? 'rgba(59,130,246,0.06)' : 'transparent',
+                  border: 'none',
+                  color: rightTab === t.id ? '#fff' : '#6b7280',
                   borderBottom: rightTab === t.id ? '2px solid #3b82f6' : '2px solid transparent',
-                  transition: 'color 0.15s',
+                  transition: 'all 0.15s',
                 }}>{t.label}</button>
               ))}
             </div>

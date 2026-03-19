@@ -5,7 +5,8 @@ interface Member {
   id: string; name: string; color: string; emoji: string; role: string
   googleCalendarId?: string; googleAccessToken?: string
   phoneNumber?: string; notificationPrefs?: string
-  email?: string; agendaEmailEnabled?: boolean
+  email?: string; agendaEmailEnabled?: boolean; agendaEmailTime?: string
+  eventReminderMinutes?: number
 }
 
 interface Props { onClose: () => void; onMembersUpdated: () => void }
@@ -605,41 +606,48 @@ function GoogleCalendarTab({ members, onUpdated }: { members: Member[]; onUpdate
   )
 }
 
-const NOTIFICATION_PREFS = [
-  { key: 'eventReminders', label: 'Event Reminders (30 min)' },
-  { key: 'newEventAdded', label: 'New Event Added' },
-  { key: 'choreReminders', label: 'Chore Reminders (9am)' },
-  { key: 'mealPlanUpdates', label: 'Meal Plan Updates' },
-  { key: 'weatherAlerts', label: 'Weather Alerts' },
-  { key: 'announcements', label: 'Announcements' },
-]
+const REMINDER_LABELS: Record<number, string> = { 15: '15min', 30: '30min', 60: '1hr', 120: '2hr', 1440: '1 day' }
+
+function getNotificationPrefs(reminderMinutes: number) {
+  return [
+    { key: 'eventReminders', label: `Event Reminders (${REMINDER_LABELS[reminderMinutes] || reminderMinutes + 'min'})` },
+    { key: 'newEventAdded', label: 'New Event Added' },
+    { key: 'choreReminders', label: 'Chore Reminders (9am)' },
+    { key: 'mealPlanUpdates', label: 'Meal Plan Updates' },
+    { key: 'weatherAlerts', label: 'Weather Alerts' },
+    { key: 'announcements', label: 'Announcements' },
+  ]
+}
 
 function NotificationsTab({ members }: { members: Member[] }) {
-  const [phoneNumbers, setPhoneNumbers] = useState<Record<string, string>>({})
   const [emails, setEmails] = useState<Record<string, string>>({})
   const [agendaEmailEnabled, setAgendaEmailEnabled] = useState<Record<string, boolean>>({})
+  const [agendaEmailTime, setAgendaEmailTime] = useState<Record<string, string>>({})
+  const [eventReminderMinutes, setEventReminderMinutes] = useState<Record<string, number>>({})
   const [prefs, setPrefs] = useState<Record<string, Record<string, boolean>>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
-  const [testing, setTesting] = useState<Record<string, boolean>>({})
   const [testingEmail, setTestingEmail] = useState<Record<string, boolean>>({})
   const [avatarErrors, setAvatarErrors] = useState<Set<string>>(new Set())
   const [initialized, setInitialized] = useState(false)
 
   useEffect(() => {
     if (initialized || members.length === 0) return
-    const phones: Record<string, string> = {}
     const emailMap: Record<string, string> = {}
     const agendaMap: Record<string, boolean> = {}
+    const agendaTimeMap: Record<string, string> = {}
+    const reminderMap: Record<string, number> = {}
     const prefMap: Record<string, Record<string, boolean>> = {}
     members.forEach(m => {
-      phones[m.id] = m.phoneNumber || ''
       emailMap[m.id] = m.email || ''
       agendaMap[m.id] = m.agendaEmailEnabled !== false
+      agendaTimeMap[m.id] = m.agendaEmailTime || '07:00'
+      reminderMap[m.id] = m.eventReminderMinutes ?? 30
       try { prefMap[m.id] = JSON.parse(m.notificationPrefs || '{}') } catch { prefMap[m.id] = {} }
     })
-    setPhoneNumbers(phones)
     setEmails(emailMap)
     setAgendaEmailEnabled(agendaMap)
+    setAgendaEmailTime(agendaTimeMap)
+    setEventReminderMinutes(reminderMap)
     setPrefs(prefMap)
     setInitialized(true)
   }, [members, initialized])
@@ -650,26 +658,14 @@ function NotificationsTab({ members }: { members: Member[] }) {
       await fetch(`/api/members/${memberId}/notifications`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phoneNumber: phoneNumbers[memberId],
           notificationPrefs: prefs[memberId] || {},
           email: emails[memberId],
           agendaEmailEnabled: agendaEmailEnabled[memberId],
+          agendaEmailTime: agendaEmailTime[memberId] || '07:00',
+          eventReminderMinutes: eventReminderMinutes[memberId] ?? 30,
         }),
       })
     } finally { setSaving(s => ({ ...s, [memberId]: false })) }
-  }
-
-  const testSms = async (memberId: string) => {
-    setTesting(t => ({ ...t, [memberId]: true }))
-    try {
-      const res = await fetch('/api/sms/test', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId }),
-      })
-      const data = await res.json()
-      if (data.error) alert(`Error: ${data.error}`)
-      else alert('Test SMS sent (or logged if Twilio not configured)')
-    } finally { setTesting(t => ({ ...t, [memberId]: false })) }
   }
 
   const testEmail = async (memberId: string) => {
@@ -693,15 +689,15 @@ function NotificationsTab({ members }: { members: Member[] }) {
     <div className="flex flex-col gap-4">
       <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
         <div className="flex items-center gap-3 mb-2">
-          <span style={{ fontSize: '1.6rem' }}>🔔</span>
+          <span style={{ fontSize: '1.6rem' }}>📧</span>
           <div>
-            <div className="text-white font-semibold">SMS Notifications</div>
-            <div style={{ fontSize: '12px', color: 'var(--text-3)' }}>Configure per-member phone and preferences</div>
+            <div className="text-white font-semibold">Email Notifications</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-3)' }}>Configure per-member email and preferences</div>
           </div>
         </div>
         <div style={{ fontSize: '12px', color: 'var(--text-3)', lineHeight: 1.7 }}>
-          Requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER in .env.<br />
-          Without Twilio configured, messages are logged to console only.
+          Requires Gmail configured in the add-on settings.<br />
+          Events, chores, weather alerts, and daily agenda sent via email.
         </div>
       </div>
       {members.map(m => {
@@ -732,33 +728,37 @@ function NotificationsTab({ members }: { members: Member[] }) {
             ) : (
               <>
                 <input
-                  value={phoneNumbers[m.id] || ''}
-                  onChange={e => setPhoneNumbers(p => ({ ...p, [m.id]: e.target.value }))}
-                  placeholder="+1 (555) 000-0000"
-                  className="outline-none rounded-xl px-3 py-2.5 text-white w-full"
-                  style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', fontSize: '14px' }}
+                  type="email"
+                  value={emails[m.id] || ''}
+                  onChange={e => setEmails(p => ({ ...p, [m.id]: e.target.value }))}
+                  placeholder="Email address"
+                  style={{ width: '100%', background: '#1a1d2e', border: '1px solid #2a2d3e', borderRadius: 6, padding: '8px 10px', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 10 }}
                 />
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>Email Settings</div>
-                  <input
-                    type="email"
-                    value={emails[m.id] || ''}
-                    onChange={e => setEmails(p => ({ ...p, [m.id]: e.target.value }))}
-                    placeholder="Email address"
-                    style={{ width: '100%', background: '#1a1d2e', border: '1px solid #2a2d3e', borderRadius: 6, padding: '8px 10px', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }}
-                  />
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={agendaEmailEnabled[m.id] !== false}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }}>
+                    <input type="checkbox" checked={agendaEmailEnabled[m.id] !== false}
                       onChange={e => setAgendaEmailEnabled(p => ({ ...p, [m.id]: e.target.checked }))}
-                      style={{ width: 16, height: 16 }}
-                    />
-                    <span style={{ fontSize: 13, color: '#cbd5e1' }}>Daily agenda email at 7:00 AM</span>
+                      style={{ width: 16, height: 16 }} />
+                    <span style={{ fontSize: 12, color: '#cbd5e1' }}>Daily agenda at</span>
                   </label>
+                  <input type="time" value={agendaEmailTime[m.id] || '07:00'}
+                    onChange={e => setAgendaEmailTime(p => ({ ...p, [m.id]: e.target.value }))}
+                    style={{ background: '#1a1d2e', border: '1px solid #2a2d3e', borderRadius: 6, padding: '4px 8px', color: '#fff', fontSize: 12, outline: 'none', colorScheme: 'dark' }} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, color: '#cbd5e1' }}>Event reminders</span>
+                  <select value={eventReminderMinutes[m.id] ?? 30}
+                    onChange={e => setEventReminderMinutes(p => ({ ...p, [m.id]: Number(e.target.value) }))}
+                    style={{ background: '#1a1d2e', border: '1px solid #2a2d3e', borderRadius: 6, padding: '4px 8px', color: '#fff', fontSize: 12, outline: 'none' }}>
+                    <option value={15}>15 min before</option>
+                    <option value={30}>30 min before</option>
+                    <option value={60}>1 hour before</option>
+                    <option value={120}>2 hours before</option>
+                    <option value={1440}>1 day before</option>
+                  </select>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  {NOTIFICATION_PREFS.map(({ key, label }) => (
+                  {getNotificationPrefs(eventReminderMinutes[m.id] ?? 30).map(({ key, label }) => (
                     <label key={key} className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox"
                         checked={prefs[m.id]?.[key] || false}
@@ -776,13 +776,21 @@ function NotificationsTab({ members }: { members: Member[] }) {
                   </button>
                   <button onClick={() => testEmail(m.id)} disabled={testingEmail[m.id]}
                     className="rounded-xl font-semibold"
-                    style={{ height: '40px', padding: '0 14px', background: 'rgba(59,130,246,0.15)', color: '#60a5fa', fontSize: '13px', border: '1px solid rgba(59,130,246,0.25)' }}>
-                    {testingEmail[m.id] ? '...' : 'Test Email'}
+                    style={{ height: '40px', padding: '0 10px', background: 'rgba(59,130,246,0.15)', color: '#60a5fa', fontSize: '12px', border: '1px solid rgba(59,130,246,0.25)' }}>
+                    {testingEmail[m.id] ? '...' : 'Test'}
                   </button>
-                  <button onClick={() => testSms(m.id)} disabled={testing[m.id]}
+                  <button onClick={async () => {
+                    const res = await fetch('/api/email/agenda', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ memberId: m.id }),
+                    })
+                    const data = await res.json()
+                    if (data.error) alert(`Error: ${data.error}`)
+                    else alert(data.message || 'Agenda email sent!')
+                  }}
                     className="rounded-xl font-semibold"
-                    style={{ height: '40px', padding: '0 14px', background: 'rgba(16,185,129,0.15)', color: '#10b981', fontSize: '13px', border: '1px solid rgba(16,185,129,0.25)' }}>
-                    {testing[m.id] ? '...' : 'Test SMS'}
+                    style={{ height: '40px', padding: '0 10px', background: 'rgba(16,185,129,0.15)', color: '#10b981', fontSize: '12px', border: '1px solid rgba(16,185,129,0.25)' }}>
+                    Send Agenda
                   </button>
                 </div>
               </>

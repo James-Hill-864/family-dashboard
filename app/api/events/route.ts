@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { broadcastUpdate } from '@/lib/sse'
+import { sendNewEventNotification } from '@/lib/notifications'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -31,5 +32,11 @@ export async function POST(req: NextRequest) {
     include: { member: true, reminders: true },
   })
   broadcastUpdate('events')
+  // Send email notification for new events
+  try {
+    await sendNewEventNotification({ title: event.title, startTime: event.startTime }, event.memberId)
+  } catch (err) {
+    console.error('[events] notification error:', err)
+  }
   return NextResponse.json(event, { status: 201 })
 }

@@ -35,12 +35,13 @@ export default function AnnouncementTicker() {
   }
 
   const submit = async () => {
-    if (!form.message.trim() || !form.createdBy) return
+    if (!form.message.trim()) return
+    const creator = form.createdBy ? members.find(m => m.id === form.createdBy) : null
     await fetch('/api/announcements', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: form.message.trim(),
-        createdBy: form.createdBy,
+        createdBy: creator?.name || 'Family',
         priority: form.priority,
         expiresAt: getExpiresAt(form.expiresIn),
         notifySms: form.notifySms,
@@ -154,7 +155,7 @@ export default function AnnouncementTicker() {
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input type="checkbox" checked={form.notifySms} onChange={e => setForm(f => ({ ...f, notifySms: e.target.checked }))}
                 style={{ width: 16, height: 16, borderRadius: 4 }} />
-              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>Notify family via SMS</span>
+              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>Notify family via email</span>
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={submit} style={{ flex: 1, height: 48, background: '#f59e0b', color: '#fff', fontWeight: 700, fontSize: 14, border: 'none', borderRadius: 12, cursor: 'pointer' }}>Post Announcement</button>

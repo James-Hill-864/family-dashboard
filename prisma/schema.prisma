@@ -21,6 +21,7 @@ model FamilyMember {
   email             String?
   agendaEmailEnabled Boolean @default(true)
   agendaEmailTime    String?  @default("07:00")
+  eventReminderMinutes Int    @default(30)
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

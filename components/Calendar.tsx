@@ -136,14 +136,17 @@ export default function Calendar({ filterMemberIds }: Props) {
                 onClick={() => openAdd(day)}
                 className="rounded-xl flex flex-col overflow-hidden cursor-pointer"
                 style={{
-                  background: isToday ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.015)',
-                  border: isToday ? '1px solid rgba(59,130,246,0.4)' : '1px solid transparent',
+                  background: isToday
+                    ? 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(139,92,246,0.1))'
+                    : 'rgba(255,255,255,0.015)',
+                  border: isToday ? '1px solid rgba(59,130,246,0.35)' : '1px solid rgba(255,255,255,0.03)',
+                  boxShadow: isToday ? '0 0 12px rgba(59,130,246,0.1)' : 'none',
                   padding: '3px',
                   minHeight: '90px',
-                  transition: 'background 0.15s',
+                  transition: 'all 0.2s ease',
                 }}
-                onMouseEnter={e => { if (!isToday) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)' }}
-                onMouseLeave={e => { if (!isToday) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.015)' }}
+                onMouseEnter={e => { if (!isToday) { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)' } }}
+                onMouseLeave={e => { if (!isToday) { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.015)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.03)' } }}
               >
                 {/* Date number + badge */}
                 <div className="flex items-center justify-between mb-0.5">

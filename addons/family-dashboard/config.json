@@ -4,7 +4,7 @@
   "webui": "http://[HOST]:[PORT:3000]",
   "slug": "family-dashboard",
   "description": "Family calendar, weather, smart home controls, meals, chores, and Google Calendar sync",
-  "url": "https://github.com/home/family-dashboard",
+  "url": "https://github.com/James-Hill-864/family-dashboard",
   "arch": ["aarch64", "amd64", "armv7"],
   "startup": "application",
   "boot": "auto",
@@ -21,13 +21,8 @@
     "google_client_id": "",
     "google_client_secret": "",
     "google_redirect_uri": "http://homeassistant.local:3000/api/google/callback",
-    "vapid_public_key": "",
-    "vapid_private_key": "",
     "gmail_user": "",
-    "gmail_app_password": "",
-    "twilio_account_sid": "",
-    "twilio_auth_token": "",
-    "twilio_from_number": ""
+    "gmail_app_password": ""
   },
   "schema": {
     "ha_base_url": "str",
@@ -36,13 +31,8 @@
     "google_client_id": "str?",
     "google_client_secret": "str?",
     "google_redirect_uri": "str?",
-    "vapid_public_key": "str?",
-    "vapid_private_key": "str?",
     "gmail_user": "str?",
-    "gmail_app_password": "str?",
-    "twilio_account_sid": "str?",
-    "twilio_auth_token": "str?",
-    "twilio_from_number": "str?"
+    "gmail_app_password": "str?"
   },
   "map": [],
   "init": false,

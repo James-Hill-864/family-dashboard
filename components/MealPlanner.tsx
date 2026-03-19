@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import GroceryList from './GroceryList'
 
 interface Member { id: string; name: string; emoji: string; color: string }
 interface MealAssignment { id: string; member: Member }
@@ -49,7 +50,7 @@ export default function MealPlanner() {
   const [meals, setMeals] = useState<Meal[]>([])
   const [weekStart] = useState<Date>(getSundayOfWeek())
   const todayIdx = new Date().getDay()
-  const [activeTab, setActiveTab] = useState<'planner' | 'recipes'>('planner')
+  const [activeTab, setActiveTab] = useState<'planner' | 'recipes' | 'grocery'>('planner')
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [recipeSearch, setRecipeSearch] = useState('')
   const [recipeCategory, setRecipeCategory] = useState('')
@@ -189,7 +190,10 @@ export default function MealPlanner() {
           Meal Planner
         </button>
         <button onClick={() => setActiveTab('recipes')} style={{ padding: '8px 16px', fontSize: 12, fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', color: activeTab === 'recipes' ? '#fff' : '#4a4d6a', borderBottom: activeTab === 'recipes' ? '2px solid #3b82f6' : '2px solid transparent' }}>
-          Recipe Box
+          Recipes
+        </button>
+        <button onClick={() => setActiveTab('grocery')} style={{ padding: '8px 16px', fontSize: 12, fontWeight: 600, background: 'transparent', border: 'none', cursor: 'pointer', color: activeTab === 'grocery' ? '#fff' : '#4a4d6a', borderBottom: activeTab === 'grocery' ? '2px solid #3b82f6' : '2px solid transparent' }}>
+          Grocery
         </button>
       </div>
 
@@ -515,6 +519,13 @@ export default function MealPlanner() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ===== GROCERY TAB ===== */}
+      {activeTab === 'grocery' && (
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <GroceryList />
         </div>
       )}
     </div>
