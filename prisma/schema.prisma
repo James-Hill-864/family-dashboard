@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model FamilyMember {
+  id        String   @id @default(cuid())
+  name      String
+  color     String
+  emoji     String
+  role      String
+  googleAccessToken  String?
+  googleRefreshToken String?
+  googleCalendarId   String?
+  googleTokenExpiry  DateTime?
+  phoneNumber           String?
+  notificationPrefs     String?  @default("{}")
+  email             String?
+  agendaEmailEnabled Boolean @default(true)
+  agendaEmailTime    String?  @default("07:00")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events        CalendarEvent[]
+  schedules     Schedule[]
+  todos         Todo[]
+  mealAssignments MealAssignment[]
+  recipes Recipe[]
+}
+
+model CalendarEvent {
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  startTime     DateTime
+  endTime       DateTime
+  allDay        Boolean  @default(false)
+  type          String
+  color         String?
+  recurring     String?
+  googleEventId String?
+  source        String?  @default("local")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  memberId    String
+  member      FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  reminders   Reminder[]
+}
+
+model Reminder {
+  id        String   @id @default(cuid())
+  minutesBefore Int
+  sent      Boolean  @default(false)
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+
+  eventId   String
+  event     CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model Schedule {
+  id         String   @id @default(cuid())
+  dayOfWeek  Int?
+  date       DateTime?
+  startTime  String
+  endTime    String
+  label      String
+  type       String
+  isOverride Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  memberId   String
+  member     FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model MealPlan {
+  id        String   @id @default(cuid())
+  weekStart DateTime
+  day       Int
+  mealType  String
+  name      String
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments MealAssignment[]
+}
+
+model MealAssignment {
+  id       String @id @default(cuid())
+  mealId   String
+  meal     MealPlan     @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  memberId String
+  member   FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model Todo {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  done        Boolean   @default(false)
+  doneAt      DateTime?
+  dueDate     DateTime?
+  priority    String    @default("normal")
+  category    String    @default("todo")
+  recurring   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  assigneeId  String?
+  assignee    FamilyMember? @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}
+
+model GroceryItem {
+  id         String   @id @default(cuid())
+  name       String
+  quantity   String?
+  unit       String?
+  category   String   @default("Other")
+  checked    Boolean  @default(false)
+  addedBy    String?
+  mealPlanId String?
+  recipeId   String?
+  recipe     Recipe?  @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Announcement {
+  id        String    @id @default(cuid())
+  message   String
+  createdBy String
+  priority  String    @default("normal")
+  pinned    Boolean   @default(false)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model SentAlert {
+  id        String   @id @default(cuid())
+  alertId   String   @unique
+  title     String
+  sentAt    DateTime @default(now())
+}
+
+model SentSms {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  sentAt    DateTime @default(now())
+}
+
+model Recipe {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  ingredients  String   // JSON array of {amount, unit, name}
+  instructions String   // JSON array of step strings
+  prepTime     Int?     // minutes
+  cookTime     Int?     // minutes
+  servings     Int?
+  category     String   @default("dinner") // breakfast/lunch/dinner/snack/dessert/other
+  imageUrl     String?
+  sourceUrl    String?
+  favorite     Boolean  @default(false)
+  tags         String?  // JSON array of strings
+  addedById    String?
+  addedBy      FamilyMember? @relation(fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  groceryItems GroceryItem[]
+}
+
+model SentEmail {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  sentAt    DateTime @default(now())
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  text      String
+  color     String   @default("#f59e0b")
+  createdBy String?
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Package {
+  id             String   @id @default(cuid())
+  trackingNumber String
+  carrier        String   @default("auto") // auto, usps, ups, fedex, amazon
+  description    String?
+  status         String   @default("pending") // pending, in_transit, out_for_delivery, delivered
+  lastUpdate     String?
+  estimatedDelivery String?
+  delivered      Boolean  @default(false)
+  addedBy        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}

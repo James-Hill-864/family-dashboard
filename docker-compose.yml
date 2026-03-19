@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  family-dashboard:
+    build: .
+    container_name: family-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - dashboard-data:/data
+    environment:
+      - DATABASE_URL=file:/data/family.db
+      - HA_BASE_URL=${HA_BASE_URL}
+      - HA_TOKEN=${HA_TOKEN}
+      - NEXT_PUBLIC_FAMILY_NAME=${NEXT_PUBLIC_FAMILY_NAME}
+    env_file:
+      - .env
+
+volumes:
+  dashboard-data:
+    driver: local
