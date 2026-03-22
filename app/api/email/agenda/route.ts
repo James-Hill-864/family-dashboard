@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail, buildAgendaEmail } from '@/lib/email'
+import { utcStartOfToday, utcStartOfTomorrow, localStartOfToday, localStartOfTomorrow } from '@/lib/dates'
 
 /**
  * POST /api/email/agenda { memberId }
@@ -14,20 +15,34 @@ export async function POST(req: NextRequest) {
   if (!member.email) return NextResponse.json({ error: 'No email address set' }, { status: 400 })
 
   try {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
+    const today = localStartOfToday()
+    const tomorrow = localStartOfTomorrow()
+    const todayUTC = utcStartOfToday()
+    const tomorrowUTC = utcStartOfTomorrow()
+    const now = new Date()
+
     const in3Days = new Date(today)
     in3Days.setDate(in3Days.getDate() + 3)
 
+    // Use UTC bounds for all-day events (Google stores at UTC midnight)
+    // and local bounds for timed events
     const allTodayEvents = await prisma.calendarEvent.findMany({
-      where: { startTime: { gte: today, lt: tomorrow } },
+      where: {
+        OR: [
+          { allDay: false, startTime: { gte: today, lt: tomorrow } },
+          { allDay: true, startTime: { gte: todayUTC, lt: tomorrowUTC } },
+        ],
+      },
       include: { member: true },
       orderBy: { startTime: 'asc' },
     })
     const upcomingEvents = await prisma.calendarEvent.findMany({
-      where: { startTime: { gte: tomorrow, lt: in3Days } },
+      where: {
+        OR: [
+          { allDay: false, startTime: { gte: tomorrow, lt: in3Days } },
+          { allDay: true, startTime: { gte: tomorrowUTC, lt: new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() + 3)) } },
+        ],
+      },
       include: { member: true },
       orderBy: { startTime: 'asc' },
     })
@@ -48,6 +63,15 @@ export async function POST(req: NextRequest) {
     const myChores = await prisma.todo.findMany({
       where: { assigneeId: member.id, category: 'chore', done: false, dueDate: { gte: today, lt: tomorrow } },
     })
+    const allTodos = await prisma.todo.findMany({
+      where: { category: 'todo', done: false },
+      include: { assignee: true },
+      orderBy: { createdAt: 'desc' },
+    })
+    const allNotes = await prisma.note.findMany({
+      orderBy: [{ pinned: 'desc' }, { updatedAt: 'desc' }],
+      take: 10,
+    })
 
     const html = buildAgendaEmail({
       memberName: member.name,
@@ -61,6 +85,8 @@ export async function POST(req: NextRequest) {
       })),
       meals,
       myChores: myChores.map(c => ({ title: c.title, assigneeName: member.name })),
+      todos: allTodos.map(t => ({ title: t.title, assigneeName: t.assignee?.name })),
+      notes: allNotes.map(n => ({ text: n.text, color: n.color, createdBy: n.createdBy || undefined })),
       upcomingEvents: upcomingEvents.map(e => ({
         title: e.title, startTime: e.startTime, memberName: e.member.name,
       })),

@@ -3,6 +3,7 @@ import { prisma } from './prisma'
 import { sendEventReminder, sendChoreReminder, sendWeatherAlert } from './notifications'
 import { sendEmail, buildAgendaEmail } from './email'
 import { syncAllMembers } from './google-sync'
+import { utcStartOfToday, utcStartOfTomorrow, localStartOfToday, localStartOfTomorrow, todayDateString } from './dates'
 
 let initialized = false
 
@@ -89,9 +90,8 @@ export function initScheduler() {
 
   // 9am daily: chore reminders
   schedule.scheduleJob('0 9 * * *', async () => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const tomorrow = new Date(today.getTime() + 86400000)
+    const today = localStartOfToday()
+    const tomorrow = localStartOfTomorrow()
     const chores = await prisma.todo.findMany({
       where: { category: 'chore', done: false, dueDate: { gte: today, lt: tomorrow } },
     })
@@ -124,10 +124,6 @@ export function initScheduler() {
     try {
       const now = new Date()
       const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-      const today = new Date(now)
-      today.setHours(0, 0, 0, 0)
-      const tomorrow = new Date(today)
-      tomorrow.setDate(tomorrow.getDate() + 1)
 
       // Find members whose agenda time matches current minute
       const members = await prisma.familyMember.findMany({
@@ -136,32 +132,37 @@ export function initScheduler() {
       const dueMembers = members.filter(m => (m.agendaEmailTime || '07:00') === currentTime)
       if (dueMembers.length === 0) return
 
+      const today = localStartOfToday()
+      const tomorrow = localStartOfTomorrow()
+      const todayUTC = utcStartOfToday()
+      const tomorrowUTC = utcStartOfTomorrow()
+      const todayStr = todayDateString()
+
       const in3Days = new Date(today)
       in3Days.setDate(in3Days.getDate() + 3)
 
-      // Use UTC date range for queries but filter all-day events by UTC date
+      // Query with UTC lower bound to catch Google all-day events (stored as UTC midnight)
+      // and local upper bound to catch all timed events for today
       const allTodayEvents = await prisma.calendarEvent.findMany({
         where: {
           OR: [
-            // Timed events: use local date range
+            // Timed events: local date range
             { allDay: false, startTime: { gte: today, lt: tomorrow } },
-            // All-day events: check if UTC date matches today's local date
-            { allDay: true, startTime: { gte: today, lt: tomorrow } },
+            // All-day events: UTC date range (Google stores these at UTC midnight)
+            { allDay: true, startTime: { gte: todayUTC, lt: tomorrowUTC } },
           ],
         },
         include: { member: true },
         orderBy: { startTime: 'asc' },
       })
-      // Filter all-day events to match by UTC date (avoid timezone shift)
-      const filteredTodayEvents = allTodayEvents.filter(e => {
-        if (!e.allDay) return true
-        const utcDate = e.startTime.toISOString().split('T')[0]
-        const localDate = today.toISOString().split('T')[0]
-        return utcDate === localDate
-      })
 
       const upcomingEvents = await prisma.calendarEvent.findMany({
-        where: { startTime: { gte: tomorrow, lt: in3Days } },
+        where: {
+          OR: [
+            { allDay: false, startTime: { gte: tomorrow, lt: in3Days } },
+            { allDay: true, startTime: { gte: tomorrowUTC, lt: new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() + 3)) } },
+          ],
+        },
         include: { member: true },
         orderBy: { startTime: 'asc' },
       })
@@ -178,12 +179,23 @@ export function initScheduler() {
         dinner: todayMeals.find(m => m.mealType === 'dinner')?.name,
       }
 
+      // Fetch pending todos and family notes for the email
+      const allTodos = await prisma.todo.findMany({
+        where: { category: 'todo', done: false },
+        include: { assignee: true },
+        orderBy: { createdAt: 'desc' },
+      })
+      const allNotes = await prisma.note.findMany({
+        orderBy: [{ pinned: 'desc' }, { updatedAt: 'desc' }],
+        take: 10,
+      })
+
       for (const member of dueMembers) {
-        const emailKey = `agenda-${member.id}-${today.toISOString().split('T')[0]}`
+        const emailKey = `agenda-${member.id}-${todayStr}`
         const alreadySent = await prisma.sentEmail.findUnique({ where: { key: emailKey } })
         if (alreadySent) continue
 
-        const myEvents = filteredTodayEvents.filter(e => e.memberId === member.id)
+        const myEvents = allTodayEvents.filter(e => e.memberId === member.id)
         const myChores = await prisma.todo.findMany({
           where: { assigneeId: member.id, category: 'chore', done: false, dueDate: { gte: today, lt: tomorrow } },
         })
@@ -191,7 +203,7 @@ export function initScheduler() {
         const html = buildAgendaEmail({
           memberName: member.name,
           date: today,
-          allEvents: filteredTodayEvents.map(e => ({
+          allEvents: allTodayEvents.map(e => ({
             title: e.title,
             startTime: e.startTime,
             endTime: e.endTime,
@@ -207,6 +219,8 @@ export function initScheduler() {
           })),
           meals,
           myChores: myChores.map(c => ({ title: c.title, assigneeName: member.name })),
+          todos: allTodos.map(t => ({ title: t.title, assigneeName: t.assignee?.name })),
+          notes: allNotes.map(n => ({ text: n.text, color: n.color, createdBy: n.createdBy || undefined })),
           upcomingEvents: upcomingEvents.map(e => ({
             title: e.title,
             startTime: e.startTime,

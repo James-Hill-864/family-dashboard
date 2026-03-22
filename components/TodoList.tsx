@@ -8,6 +8,27 @@ interface Todo {
 }
 interface Props { category?: 'todo' | 'chore'; title: string }
 
+function MemberAvatar({ member, size = 22 }: { member: Member; size?: number }) {
+  const [imgError, setImgError] = useState(false)
+  if (imgError) {
+    return (
+      <span className="flex-shrink-0 flex items-center justify-center rounded-full"
+        style={{ width: size, height: size, background: member.color + '30', border: `1px solid ${member.color}60`, fontSize: size * 0.55 }}>
+        {member.emoji}
+      </span>
+    )
+  }
+  return (
+    <img
+      src={`/api/avatars/${member.id}`}
+      alt={member.name}
+      onError={() => setImgError(true)}
+      className="flex-shrink-0 rounded-full"
+      style={{ width: size, height: size, objectFit: 'cover', border: `1px solid ${member.color}60` }}
+    />
+  )
+}
+
 const RECUR_OPTIONS = [
   { value: '', label: 'Once' },
   { value: 'daily', label: 'Daily' },
@@ -36,6 +57,8 @@ export default function TodoList({ category = 'todo', title }: Props) {
   useEffect(() => { load() }, [load])
 
   const toggle = async (todo: Todo) => {
+    // Optimistic update — toggle immediately, then sync with server
+    setTodos(prev => prev.map(t => t.id === todo.id ? { ...t, done: !t.done } : t))
     await fetch(`/api/todos/${todo.id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ done: !todo.done }),
@@ -52,10 +75,17 @@ export default function TodoList({ category = 'todo', title }: Props) {
       recurring: form.recurring || null,
     }
     if (editingId) {
+      // Optimistic update for edits
+      const assignee = members.find(m => m.id === form.assigneeId) || undefined
+      setTodos(prev => prev.map(t => t.id === editingId ? { ...t, title: body.title, assignee, recurring: body.recurring || undefined } : t))
       await fetch(`/api/todos/${editingId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       })
     } else {
+      // Optimistic add — insert a temporary item so it appears instantly
+      const assignee = members.find(m => m.id === form.assigneeId) || undefined
+      const tempTodo: Todo = { id: 'temp-' + Date.now(), title: body.title, done: false, priority: 'normal', category, assignee, recurring: body.recurring || undefined }
+      setTodos(prev => [tempTodo, ...prev])
       await fetch('/api/todos', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       })
@@ -73,6 +103,7 @@ export default function TodoList({ category = 'todo', title }: Props) {
   }
 
   const deleteTodo = async (id: string) => {
+    setTodos(prev => prev.filter(t => t.id !== id))
     await fetch(`/api/todos/${id}`, { method: 'DELETE' })
     load()
   }
@@ -163,11 +194,9 @@ export default function TodoList({ category = 'todo', title }: Props) {
               )}
             </div>
             {todo.assignee && (
-              <div
-                className="flex-shrink-0 flex items-center justify-center rounded-full"
-                style={{ width: '22px', height: '22px', background: todo.assignee.color + '30', border: `1px solid ${todo.assignee.color}60`, fontSize: '12px' }}
-                title={todo.assignee.name}
-              >{todo.assignee.emoji}</div>
+              <span title={todo.assignee.name}>
+                <MemberAvatar member={todo.assignee} size={22} />
+              </span>
             )}
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button onClick={() => startEdit(todo)}
@@ -194,7 +223,7 @@ export default function TodoList({ category = 'todo', title }: Props) {
                   <span className="text-white" style={{ fontSize: '11px', lineHeight: 1 }}>✓</span>
                 </button>
                 <span className="flex-1 line-through truncate" style={{ fontSize: '13px', color: 'var(--text-3)' }}>{todo.title}</span>
-                {todo.assignee && <span style={{ fontSize: '12px' }}>{todo.assignee.emoji}</span>}
+                {todo.assignee && <MemberAvatar member={todo.assignee} size={18} />}
               </div>
             ))}
           </>

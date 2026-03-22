@@ -6,6 +6,9 @@ DATA_DIR="/data"
 
 echo "[family-dashboard] Starting..."
 
+# Set timezone to Eastern (required for scheduled emails and reminders)
+export TZ="America/New_York"
+
 # Read options from HA add-on config
 if [ -f "$CONFIG_PATH" ]; then
     HA_TOKEN=$(jq --raw-output '.ha_token // empty' "$CONFIG_PATH")

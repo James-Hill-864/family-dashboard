@@ -7,6 +7,10 @@ import { exchangeCode, getPrimaryCalendarId } from '@/lib/google'
  * and persist tokens on the FamilyMember record.
  */
 async function connectGoogle(code: string, memberId: string) {
+  // Validate memberId exists before proceeding
+  const member = await prisma.familyMember.findUnique({ where: { id: memberId } })
+  if (!member) throw new Error('Invalid member ID')
+
   const { access_token, refresh_token, expiry_date } = await exchangeCode(code)
   const googleCalendarId = await getPrimaryCalendarId(access_token)
 

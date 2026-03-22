@@ -28,11 +28,13 @@ export function buildAgendaEmail(params: {
   myEvents: Array<{ title: string; startTime: Date; endTime: Date; allDay: boolean; color?: string }>
   meals: { breakfast?: string; lunch?: string; dinner?: string }
   myChores: Array<{ title: string; assigneeName: string }>
+  todos: Array<{ title: string; assigneeName?: string }>
+  notes: Array<{ text: string; color: string; createdBy?: string }>
   upcomingEvents: Array<{ title: string; startTime: Date; memberName: string }>
   weather?: { temp: number; condition: string; high: number; low: number; icon: string }
   dashboardUrl: string
 }): string {
-  const { memberName, date, allEvents, myEvents, meals, myChores, upcomingEvents, weather, dashboardUrl } = params
+  const { memberName, date, allEvents, myEvents, meals, myChores, todos, notes, upcomingEvents, weather, dashboardUrl } = params
 
   const dayName = date.toLocaleDateString('en-US', { weekday: 'long' })
   const dateStr = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
@@ -69,6 +71,14 @@ export function buildAgendaEmail(params: {
     <h3 style="color:#374151;font-size:16px;margin:24px 0 8px;">✅ Your Chores Due Today</h3>
     ${myChores.map(c => `<div style="padding:4px 0;color:#374151;font-size:14px;">□ ${c.title}</div>`).join('')}`
 
+  const todosSection = todos.length === 0 ? '' : `
+    <h3 style="color:#374151;font-size:16px;margin:24px 0 8px;">📋 To-Do List</h3>
+    ${todos.map(t => `<div style="padding:4px 0;color:#374151;font-size:14px;">□ ${t.title}${t.assigneeName ? ` <span style="color:#888;font-size:12px;">(${t.assigneeName})</span>` : ''}</div>`).join('')}`
+
+  const notesSection = notes.length === 0 ? '' : `
+    <h3 style="color:#374151;font-size:16px;margin:24px 0 8px;">📝 Family Notes</h3>
+    ${notes.map(n => `<div style="padding:8px 12px;margin:4px 0;border-radius:6px;background:${n.color}15;border-left:3px solid ${n.color};color:#374151;font-size:14px;">${n.text}${n.createdBy ? `<div style="font-size:11px;color:#888;margin-top:4px;">— ${n.createdBy}</div>` : ''}</div>`).join('')}`
+
   const upcomingSection = upcomingEvents.length === 0 ? '' : `
     <h3 style="color:#374151;font-size:16px;margin:24px 0 8px;">📆 Coming Up (Next 3 Days)</h3>
     ${upcomingEvents.map(e => `<div style="padding:3px 0;color:#374151;font-size:13px;">• ${e.startTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} — ${e.title} <span style="color:#888;">(${e.memberName})</span></div>`).join('')}`
@@ -99,7 +109,9 @@ export function buildAgendaEmail(params: {
       <table style="border-collapse:collapse;width:100%;">${eventsRows}</table>
       ${myEventsSection}
       ${mealsSection}
+      ${todosSection}
       ${choresSection}
+      ${notesSection}
       ${upcomingSection}
       <!-- Footer -->
       <div style="border-top:1px solid #e5e7eb;margin-top:28px;padding-top:20px;text-align:center;">

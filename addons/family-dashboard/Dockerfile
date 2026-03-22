@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
 # Build tools for native modules (better-sqlite3)
-RUN apk add --no-cache python3 make g++ libc6-compat jq
+RUN apk add --no-cache python3 make g++ libc6-compat jq tzdata
 
 WORKDIR /app
 

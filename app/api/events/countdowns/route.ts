@@ -1,15 +1,17 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { utcStartOfToday, todayDateString } from '@/lib/dates'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const now = new Date()
-  const future = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)
+  // Use UTC midnight so Google all-day events (stored as UTC midnight) are included
+  const start = utcStartOfToday()
+  const future = new Date(start.getTime() + 90 * 24 * 60 * 60 * 1000)
 
   const events = await prisma.calendarEvent.findMany({
     where: {
-      startTime: { gte: now, lte: future },
+      startTime: { gte: start, lte: future },
       OR: [
         { type: { in: ['birthday', 'vacation', 'countdown'] } },
         { title: { contains: 'birthday' } },
@@ -23,20 +25,19 @@ export async function GET() {
     take: 5,
   })
 
+  const todayStr = todayDateString()
   const countdowns = events.map(e => {
-    // For all-day events stored as UTC midnight, extract just the date part
-    // to avoid timezone offset issues on the client
-    const iso = e.startTime.toISOString()
-    const dateOnly = iso.split('T')[0] // "2026-03-20"
-    const eventDate = new Date(dateOnly + 'T12:00:00') // noon local to avoid day boundary issues
-    const todayNoon = new Date()
-    todayNoon.setHours(12, 0, 0, 0)
-    const days = Math.round((eventDate.getTime() - todayNoon.getTime()) / (1000 * 60 * 60 * 24))
+    // Extract UTC date portion for display (no timezone ambiguity)
+    const dateOnly = e.startTime.toISOString().split('T')[0]
+    // Calculate days remaining using date strings to avoid timezone math
+    const eventDays = Math.floor(new Date(dateOnly + 'T12:00:00Z').getTime() / 86400000)
+    const todayDays = Math.floor(new Date(todayStr + 'T12:00:00Z').getTime() / 86400000)
+    const daysRemaining = eventDays - todayDays
     return {
       id: e.id,
       title: e.title,
-      date: dateOnly, // "2026-03-20" — no timezone ambiguity
-      daysRemaining: Math.max(0, days),
+      date: dateOnly,
+      daysRemaining: Math.max(0, daysRemaining),
       type: e.type,
       memberName: e.member.name,
       color: e.color || e.member.color,

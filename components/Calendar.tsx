@@ -32,6 +32,16 @@ function isSameDay(a: Date, b: Date) {
 function formatTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
+function formatDuration(startStr: string, endStr: string, allDay: boolean): string {
+  if (allDay) return ''
+  const ms = new Date(endStr).getTime() - new Date(startStr).getTime()
+  if (ms <= 0) return ''
+  const totalMin = Math.round(ms / 60000)
+  if (totalMin < 60) return `${totalMin}m`
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return m > 0 ? `${h}h${m}m` : `${h}h`
+}
 
 export default function Calendar({ filterMemberIds }: Props) {
   const [events, setEvents] = useState<CalendarEvent[]>([])
@@ -175,16 +185,18 @@ export default function Calendar({ filterMemberIds }: Props) {
                 <div className="flex flex-col gap-px overflow-hidden">
                   {dayEvents.slice(0, 2).map(e => {
                     const color = e.color || EVENT_TYPE_COLORS[e.type] || e.member.color
+                    const dur = formatDuration(e.startTime, e.endTime, e.allDay)
                     return (
                       <div
                         key={e.id}
                         onClick={(ev) => openEdit(e, ev)}
                         className="rounded flex items-center gap-px truncate"
                         style={{ fontSize: '9px', padding: '1px 3px', backgroundColor: color + '28', color }}
-                        title={e.title}
+                        title={`${e.title}${dur ? ` (${dur})` : ''}`}
                       >
                         <div className="rounded-full flex-shrink-0" style={{ width: '4px', height: '4px', background: e.member.color }} />
                         <span className="truncate font-medium">{e.title}</span>
+                        {dur && <span className="flex-shrink-0" style={{ opacity: 0.7, marginLeft: 2 }}>{dur}</span>}
                       </div>
                     )
                   })}
@@ -221,6 +233,9 @@ export default function Calendar({ filterMemberIds }: Props) {
                   {start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 </div>
                 {!e.allDay && <div style={{ fontSize: '11px', color: 'var(--text-2)' }}>{formatTime(e.startTime)}</div>}
+                {formatDuration(e.startTime, e.endTime, e.allDay) && (
+                  <div style={{ fontSize: '9px', color: 'var(--text-3)', opacity: 0.7 }}>{formatDuration(e.startTime, e.endTime, e.allDay)}</div>
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">

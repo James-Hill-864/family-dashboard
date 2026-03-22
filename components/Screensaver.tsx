@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 
-interface Photo { id: string; url: string; name?: string }
+interface Photo { id: string; url: string; name?: string; yearsAgo?: number; year?: number }
 interface Props { children: React.ReactNode; familyName?: string }
 
 const IDLE_MS = 5 * 60 * 1000
@@ -14,6 +14,7 @@ export default function Screensaver({ children, familyName }: Props) {
   const [photoIdx, setPhotoIdx] = useState(0)
   const [photoVisible, setPhotoVisible] = useState(true)
   const [clockPos, setClockPos] = useState({ x: 0, y: 0 })
+  const [isOnThisDay, setIsOnThisDay] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const photoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const photosRef = useRef<Photo[]>([])
@@ -33,19 +34,41 @@ export default function Screensaver({ children, familyName }: Props) {
       return
     }
 
-    const albumId = typeof window !== 'undefined' ? (localStorage.getItem('photosAlbumId') || '') : ''
-    const url = `/api/photos${albumId ? `?albumId=${encodeURIComponent(albumId)}` : ''}`
-    fetch(url)
-      .then(r => r.json())
-      .then((data: Photo[]) => {
+    const loadPhotos = async () => {
+      // Try "On This Day" photos first
+      try {
+        const otdRes = await fetch('/api/photos/onthisday')
+        const otdData = await otdRes.json()
+        if (Array.isArray(otdData) && otdData.length > 0) {
+          const otdPhotos = otdData.map((p: { id: string; url: string; name?: string; yearsAgo?: number; year?: number }) => ({
+            id: p.id, url: p.url, name: p.name, yearsAgo: p.yearsAgo, year: p.year,
+          }))
+          photosRef.current = otdPhotos
+          setPhotos(otdPhotos)
+          setIsOnThisDay(true)
+          setPhotoIdx(0)
+          setPhotoVisible(true)
+          return
+        }
+      } catch {}
+
+      // Fall back to regular album photos
+      const albumId = typeof window !== 'undefined' ? (localStorage.getItem('photosAlbumId') || '') : ''
+      const url = `/api/photos${albumId ? `?albumId=${encodeURIComponent(albumId)}` : ''}`
+      try {
+        const res = await fetch(url)
+        const data = await res.json()
         if (Array.isArray(data) && data.length > 0) {
           photosRef.current = data
           setPhotos(data)
+          setIsOnThisDay(false)
           setPhotoIdx(0)
           setPhotoVisible(true)
         }
-      })
-      .catch(() => {})
+      } catch {}
+    }
+
+    loadPhotos()
 
     photoTimerRef.current = setInterval(() => {
       if (photosRef.current.length === 0) return
@@ -96,6 +119,14 @@ export default function Screensaver({ children, familyName }: Props) {
   const currentPhoto = photos[photoIdx]
   const nextPhoto = photos.length > 1 ? photos[(photoIdx + 1) % photos.length] : null
 
+  const getPhotoCaption = (photo: Photo) => {
+    if (isOnThisDay && photo.yearsAgo && photo.yearsAgo > 0) {
+      return `${photo.yearsAgo} year${photo.yearsAgo !== 1 ? 's' : ''} ago`
+    }
+    if (photo.name) return photo.name.replace(/\.[^.]+$/, '')
+    return ''
+  }
+
   return (
     <div className="relative w-screen h-screen overflow-hidden" onClick={resetTimer}>
       <div
@@ -143,6 +174,21 @@ export default function Screensaver({ children, familyName }: Props) {
             }} />
           )}
 
+          {/* "On This Day" badge */}
+          {isOnThisDay && currentPhoto && (
+            <div style={{
+              position: 'absolute', top: 24, left: '50%', transform: 'translateX(-50%)',
+              background: 'rgba(59,130,246,0.85)', backdropFilter: 'blur(8px)',
+              padding: '8px 20px', borderRadius: 24,
+              fontSize: 14, fontWeight: 600, color: '#fff',
+              letterSpacing: '0.02em',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+              opacity: photoVisible ? 1 : 0, transition: 'opacity 0.8s ease-in-out',
+            }}>
+              📸 On This Day
+            </div>
+          )}
+
           {/* Clock */}
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <div style={{ transform: `translate(${clockPos.x}px, ${clockPos.y}px)`, transition: 'transform 4s ease-in-out' }}>
@@ -166,17 +212,27 @@ export default function Screensaver({ children, familyName }: Props) {
             </div>
           </div>
 
-          {/* Photo captions */}
-          {currentPhoto?.name && (
+          {/* Photo captions with "X years ago" */}
+          {currentPhoto && (getPhotoCaption(currentPhoto) || (nextPhoto && getPhotoCaption(nextPhoto))) && (
             <div style={{
               position: 'absolute', bottom: 48, left: 0, right: 0,
               display: 'flex', justifyContent: 'center', gap: 32,
-              fontSize: '13px', color: 'rgba(255,255,255,0.5)',
-              textShadow: '0 1px 6px rgba(0,0,0,0.9)',
               opacity: photoVisible ? 1 : 0, transition: 'opacity 0.8s ease-in-out',
             }}>
-              <span>{currentPhoto.name.replace(/\.[^.]+$/, '')}</span>
-              {nextPhoto?.name && <span>{nextPhoto.name.replace(/\.[^.]+$/, '')}</span>}
+              {[currentPhoto, nextPhoto].filter(Boolean).map((photo, i) => {
+                const caption = getPhotoCaption(photo!)
+                if (!caption) return null
+                return (
+                  <div key={i} style={{
+                    background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
+                    padding: '6px 16px', borderRadius: 20,
+                    fontSize: 13, color: 'rgba(255,255,255,0.8)',
+                    fontWeight: 500,
+                  }}>
+                    {caption}
+                  </div>
+                )
+              })}
             </div>
           )}
 

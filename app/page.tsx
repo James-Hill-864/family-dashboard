@@ -12,7 +12,9 @@ import AnnouncementTicker from '@/components/AnnouncementTicker'
 import NightDimmer from '@/components/NightDimmer'
 import MorningBriefing from '@/components/MorningBriefing'
 import BirthdayBanner from '@/components/BirthdayBanner'
+import AnimatedTabs from '@/components/AnimatedTabs'
 import { useSwipe } from '@/lib/useSwipe'
+import { useLayoutPrefs } from '@/lib/useLayoutPrefs'
 
 type RightTab = 'today' | 'smarthome' | 'cameras' | 'meals'
 
@@ -27,13 +29,7 @@ export default function Home() {
   const [showBriefing, setShowBriefing] = useState(false)
 
   useEffect(() => {
-    // Auto-redirect mobile browsers to /mobile
-    const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-    const isNarrow = window.innerWidth < 900
-    if ((isMobile || isNarrow) && !window.location.search.includes('desktop=true')) {
-      window.location.href = '/mobile'
-      return
-    }
+    // Mobile redirect disabled — desktop view loads for all devices
 
     fetch('/api/config').then(r => r.ok ? r.json() : null).then(d => {
       if (d?.familyName) setFamilyName(d.familyName)
@@ -79,20 +75,21 @@ export default function Home() {
   const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 
-  const RIGHT_TABS: { id: RightTab; label: string }[] = [
-    { id: 'today', label: 'Today' },
-    { id: 'meals', label: 'Kitchen' },
-    { id: 'smarthome', label: 'Smart Home' },
-    { id: 'cameras', label: 'Cameras' },
-  ]
+  const TAB_LABELS: Record<RightTab, string> = {
+    today: 'Today', meals: 'Kitchen', smarthome: 'Smart Home', cameras: 'Cameras',
+  }
 
-  const tabOrder: RightTab[] = ['today', 'meals', 'smarthome', 'cameras']
+  const { tabOrder, reorderTabs } = useLayoutPrefs()
+  const [reorderMode, setReorderMode] = useState(false)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+
   const swipeLeft = useCallback(() => {
     setRightTab(t => tabOrder[Math.min(tabOrder.indexOf(t) + 1, tabOrder.length - 1)])
-  }, [])
+  }, [tabOrder])
   const swipeRight = useCallback(() => {
     setRightTab(t => tabOrder[Math.max(tabOrder.indexOf(t) - 1, 0)])
-  }, [])
+  }, [tabOrder])
   const swipeRef = useSwipe(swipeLeft, swipeRight)
 
   return (
@@ -143,25 +140,58 @@ export default function Home() {
           </div>
           {/* Right: Tabs */}
           <div style={{ width: '42%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {/* Tab bar */}
-            <div style={{ display: 'flex', flexShrink: 0, height: 40, background: '#0a0d14', borderBottom: '1px solid #1a1d2e' }}>
-              {RIGHT_TABS.map(t => (
-                <button key={t.id} onClick={() => setRightTab(t.id)} style={{
-                  height: 40, padding: '0 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  background: rightTab === t.id ? 'rgba(59,130,246,0.06)' : 'transparent',
-                  border: 'none',
-                  color: rightTab === t.id ? '#fff' : '#6b7280',
-                  borderBottom: rightTab === t.id ? '2px solid #3b82f6' : '2px solid transparent',
-                  transition: 'all 0.15s',
-                }}>{t.label}</button>
+            {/* Tab bar — drag to reorder */}
+            <div style={{ display: 'flex', flexShrink: 0, height: 40, background: '#0a0d14', borderBottom: '1px solid #1a1d2e', position: 'relative' }}>
+              {tabOrder.map((tabId, idx) => (
+                <button
+                  key={tabId}
+                  draggable={reorderMode}
+                  onClick={() => !reorderMode && setRightTab(tabId)}
+                  onDragStart={() => setDragIdx(idx)}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverIdx(idx) }}
+                  onDrop={() => {
+                    if (dragIdx !== null && dragIdx !== idx) reorderTabs(dragIdx, idx)
+                    setDragIdx(null); setDragOverIdx(null)
+                  }}
+                  onDragEnd={() => { setDragIdx(null); setDragOverIdx(null) }}
+                  style={{
+                    height: 40, padding: '0 16px', fontSize: 12, fontWeight: 600, cursor: reorderMode ? 'grab' : 'pointer',
+                    background: rightTab === tabId ? 'rgba(59,130,246,0.06)' : dragOverIdx === idx ? 'rgba(59,130,246,0.1)' : 'transparent',
+                    border: 'none',
+                    color: rightTab === tabId ? '#fff' : '#6b7280',
+                    borderBottom: rightTab === tabId ? '2px solid #3b82f6' : '2px solid transparent',
+                    transition: 'all 0.15s',
+                    opacity: dragIdx === idx ? 0.5 : 1,
+                  }}
+                >
+                  {reorderMode && <span style={{ marginRight: 4, fontSize: 10, opacity: 0.5 }}>☰</span>}
+                  {TAB_LABELS[tabId]}
+                </button>
               ))}
+              <button
+                onClick={() => setReorderMode(m => !m)}
+                title={reorderMode ? 'Done reordering' : 'Reorder tabs'}
+                style={{
+                  marginLeft: 'auto', width: 32, height: 40, background: 'transparent',
+                  border: 'none', cursor: 'pointer', fontSize: 12,
+                  color: reorderMode ? '#3b82f6' : '#4a4d6a',
+                }}
+              >
+                {reorderMode ? '✓' : '⋮'}
+              </button>
             </div>
-            {/* Tab content */}
+            {/* Tab content — animated sliding panels */}
             <div ref={swipeRef} style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
-              {rightTab === 'today' && <TodayTab filterMemberIds={calendarFilter} />}
-              {rightTab === 'smarthome' && <SmartHomePanel />}
-              {rightTab === 'cameras' && <CamerasTab />}
-              {rightTab === 'meals' && <MealPlanner />}
+              <AnimatedTabs activeIndex={tabOrder.indexOf(rightTab)}>
+                {tabOrder.map(tabId => {
+                  switch (tabId) {
+                    case 'today': return <TodayTab key={tabId} filterMemberIds={calendarFilter} />
+                    case 'meals': return <MealPlanner key={tabId} />
+                    case 'smarthome': return <SmartHomePanel key={tabId} />
+                    case 'cameras': return <CamerasTab key={tabId} />
+                  }
+                })}
+              </AnimatedTabs>
             </div>
           </div>
         </div>

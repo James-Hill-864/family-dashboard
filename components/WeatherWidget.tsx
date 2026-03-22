@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { getWeatherDescription } from '@/lib/weather'
 
 interface WeatherData {
@@ -34,23 +34,49 @@ function getWeatherEmoji(code: number): string {
 
 function SunAnimation() {
   return (
-    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', perspective: '200px' }}>
       <style>{`
-        @keyframes sunRotate { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-        @keyframes sunGlow { 0%,100%{opacity:0.2} 50%{opacity:0.35} }
+        @keyframes sunRotate3d { from{transform:rotateZ(0deg)} to{transform:rotateZ(360deg)} }
+        @keyframes sunGlow3d { 0%,100%{opacity:0.2;transform:scale(1)} 50%{opacity:0.4;transform:scale(1.1)} }
+        @keyframes sunPulse { 0%,100%{box-shadow:0 0 30px rgba(251,191,36,0.3),0 0 60px rgba(251,191,36,0.1)} 50%{box-shadow:0 0 40px rgba(251,191,36,0.5),0 0 80px rgba(251,191,36,0.15)} }
+        @keyframes rayPulse { 0%,100%{opacity:0.5} 50%{opacity:0.8} }
       `}</style>
-      <div style={{ position:'absolute', top:'-10px', right:'-10px', width:'120px', height:'120px',
-        borderRadius:'50%', background:'radial-gradient(circle, rgba(251,191,36,0.22) 0%, transparent 70%)',
-        animation:'sunGlow 4s ease-in-out infinite' }} />
-      <svg style={{ position:'absolute', top:'4px', right:'4px', width:'60px', height:'60px', opacity:0.7 }} viewBox="0 0 60 60">
-        <g style={{ transformOrigin:'30px 30px', animation:'sunRotate 20s linear infinite' }}>
-          {Array.from({length:8}, (_,i) => (
-            <line key={i} x1="30" y1="6" x2="30" y2="12"
-              transform={`rotate(${i*45} 30 30)`}
-              stroke="rgba(251,191,36,0.65)" strokeWidth="2" strokeLinecap="round" />
+      {/* Outer glow ring */}
+      <div style={{ position:'absolute', top:'-20px', right:'-20px', width:'140px', height:'140px',
+        borderRadius:'50%', background:'radial-gradient(circle, rgba(251,191,36,0.25) 0%, rgba(251,146,60,0.1) 40%, transparent 70%)',
+        animation:'sunGlow3d 4s ease-in-out infinite' }} />
+      {/* Inner pulse glow */}
+      <div style={{ position:'absolute', top:'4px', right:'4px', width:'60px', height:'60px',
+        borderRadius:'50%', animation:'sunPulse 3s ease-in-out infinite' }} />
+      <svg style={{ position:'absolute', top:'4px', right:'4px', width:'60px', height:'60px', opacity:0.8 }} viewBox="0 0 60 60">
+        {/* Outer rays — rotate slowly */}
+        <g style={{ transformOrigin:'30px 30px', animation:'sunRotate3d 25s linear infinite' }}>
+          {Array.from({length:12}, (_,i) => (
+            <line key={`outer-${i}`} x1="30" y1="2" x2="30" y2="9"
+              transform={`rotate(${i*30} 30 30)`}
+              stroke="rgba(251,191,36,0.35)" strokeWidth="1" strokeLinecap="round"
+              style={{ animation: `rayPulse ${2 + (i % 3) * 0.5}s ease-in-out ${i * 0.2}s infinite` }} />
           ))}
         </g>
-        <circle cx="30" cy="30" r="13" fill="rgba(251,191,36,0.8)" />
+        {/* Inner rays — rotate opposite */}
+        <g style={{ transformOrigin:'30px 30px', animation:'sunRotate3d 15s linear infinite reverse' }}>
+          {Array.from({length:8}, (_,i) => (
+            <line key={`inner-${i}`} x1="30" y1="8" x2="30" y2="14"
+              transform={`rotate(${i*45} 30 30)`}
+              stroke="rgba(251,191,36,0.7)" strokeWidth="2" strokeLinecap="round" />
+          ))}
+        </g>
+        {/* Sun body with gradient */}
+        <defs>
+          <radialGradient id="sunGrad" cx="40%" cy="40%">
+            <stop offset="0%" stopColor="rgba(255,230,100,0.95)" />
+            <stop offset="60%" stopColor="rgba(251,191,36,0.9)" />
+            <stop offset="100%" stopColor="rgba(245,158,11,0.8)" />
+          </radialGradient>
+        </defs>
+        <circle cx="30" cy="30" r="13" fill="url(#sunGrad)" />
+        {/* Highlight spot */}
+        <circle cx="26" cy="26" r="4" fill="rgba(255,255,200,0.3)" />
       </svg>
     </div>
   )
@@ -100,32 +126,177 @@ function CloudyAnimation() {
   )
 }
 
-function RainAnimation() {
-  const drops = Array.from({length:22}, (_, i) => ({
-    left: `${(i * 4.7) % 100}%`,
-    delay: `${(i * 0.13) % 1.2}s`,
-    dur: `${0.65 + (i % 4) * 0.12}s`,
-    height: `${12 + (i % 5) * 4}px`,
-    opacity: 0.55 + (i % 3) * 0.15,
-  }))
-  return (
-    <div style={{ position:'absolute', inset:0, overflow:'hidden', pointerEvents:'none' }}>
-      <style>{`
-        @keyframes raindrop {
-          0%{transform:translateY(-20px) translateX(-3px);opacity:0}
-          15%{opacity:1}
-          100%{transform:translateY(110%) translateX(-8px);opacity:0}
+/**
+ * 3D Weather Canvas — particles have z-depth for parallax.
+ * Closer particles (z near 1) are larger, faster, brighter.
+ * Farther particles (z near 0) are smaller, slower, dimmer.
+ * Rain gets motion blur streaks scaled by depth.
+ * Snow gets 3D wobble and subtle blur via opacity.
+ */
+function WeatherCanvas({ type }: { type: 'rain' | 'snow' }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const particlesRef = useRef<Array<{
+    x: number; y: number; z: number
+    speed: number; size: number; opacity: number; drift: number
+    wobbleOffset: number
+  }>>([])
+  const animRef = useRef<number>(0)
+  const lastFrameRef = useRef<number>(0)
+
+  const initParticles = useCallback((w: number, h: number) => {
+    const count = type === 'rain' ? 60 : 40
+    particlesRef.current = Array.from({ length: count }, () => {
+      // z: 0 = far background, 1 = close foreground
+      const z = Math.random()
+      const depthScale = 0.3 + z * 0.7 // 0.3 to 1.0
+
+      return {
+        x: Math.random() * w,
+        y: Math.random() * h,
+        z,
+        speed: type === 'rain'
+          ? (2 + Math.random() * 2) * depthScale * 2
+          : (0.3 + Math.random() * 0.8) * depthScale * 2,
+        size: type === 'rain'
+          ? (0.8 + Math.random() * 1) * depthScale * 1.5
+          : (1.5 + Math.random() * 3) * depthScale * 1.5,
+        opacity: type === 'rain'
+          ? (0.15 + z * 0.7)
+          : (0.2 + z * 0.6),
+        drift: type === 'snow'
+          ? (Math.random() - 0.5) * 0.6 * depthScale
+          : (-0.2 - Math.random() * 0.5) * depthScale,
+        wobbleOffset: Math.random() * Math.PI * 2,
+      }
+    })
+    // Sort by z so far particles render first (painter's algorithm)
+    particlesRef.current.sort((a, b) => a.z - b.z)
+  }, [type])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      const parent = canvas.parentElement
+      if (!parent) return
+      canvas.width = parent.clientWidth
+      canvas.height = parent.clientHeight
+      if (particlesRef.current.length === 0) initParticles(canvas.width, canvas.height)
+    }
+    resize()
+
+    const draw = (timestamp: number) => {
+      if (timestamp - lastFrameRef.current < 33) {
+        animRef.current = requestAnimationFrame(draw)
+        return
+      }
+      lastFrameRef.current = timestamp
+
+      const w = canvas.width
+      const h = canvas.height
+      ctx.clearRect(0, 0, w, h)
+
+      for (const p of particlesRef.current) {
+        p.y += p.speed
+        p.x += p.drift
+
+        if (type === 'snow') {
+          // 3D wobble — closer particles wobble more
+          p.x += Math.sin(timestamp * 0.0008 + p.wobbleOffset + p.y * 0.015) * (0.2 + p.z * 0.6)
         }
-      `}</style>
-      {drops.map((d, i) => (
-        <div key={i} style={{
-          position:'absolute', top:0, left:d.left,
-          width:'1.5px', height:d.height, borderRadius:'1px',
-          background:'linear-gradient(to bottom, transparent, rgba(147,197,253,0.85))',
-          opacity:d.opacity,
-          animation:`raindrop ${d.dur} linear ${d.delay} infinite`,
-        }} />
-      ))}
+
+        // Wrap around
+        if (p.y > h + 10) { p.y = -(5 + Math.random() * 15); p.x = Math.random() * w }
+        if (p.x < -10) p.x = w + 10
+        if (p.x > w + 10) p.x = -10
+
+        ctx.globalAlpha = p.opacity
+
+        if (type === 'rain') {
+          // 3D rain: streaks get longer and thicker with depth
+          const streakLen = p.speed * (2.5 + p.z * 2)
+          const thickness = p.size * (0.5 + p.z * 0.8)
+
+          // Slight glow for close particles
+          if (p.z > 0.7) {
+            ctx.strokeStyle = 'rgba(170,210,255,0.3)'
+            ctx.lineWidth = thickness * 3
+            ctx.beginPath()
+            ctx.moveTo(p.x, p.y)
+            ctx.lineTo(p.x + p.drift * 2.5, p.y + streakLen)
+            ctx.stroke()
+          }
+
+          // Main streak
+          const gradient = ctx.createLinearGradient(p.x, p.y, p.x + p.drift * 2.5, p.y + streakLen)
+          gradient.addColorStop(0, 'rgba(147,197,253,0)')
+          gradient.addColorStop(0.3, `rgba(147,197,253,${0.4 + p.z * 0.5})`)
+          gradient.addColorStop(1, `rgba(200,220,255,${0.6 + p.z * 0.4})`)
+          ctx.strokeStyle = gradient
+          ctx.lineWidth = thickness
+          ctx.lineCap = 'round'
+          ctx.beginPath()
+          ctx.moveTo(p.x, p.y)
+          ctx.lineTo(p.x + p.drift * 2.5, p.y + streakLen)
+          ctx.stroke()
+
+          // Splash effect for close foreground drops hitting bottom
+          if (p.z > 0.6 && p.y >= h - 5) {
+            ctx.globalAlpha = p.opacity * 0.5
+            ctx.fillStyle = 'rgba(180,210,255,0.6)'
+            const splashR = 1 + p.z * 2
+            ctx.beginPath()
+            ctx.ellipse(p.x, h - 1, splashR * 2, splashR * 0.5, 0, 0, Math.PI * 2)
+            ctx.fill()
+          }
+        } else {
+          // 3D snow: closer flakes are larger and have a subtle glow
+          if (p.z > 0.6) {
+            ctx.fillStyle = `rgba(200,220,255,${0.08 + p.z * 0.1})`
+            ctx.beginPath()
+            ctx.arc(p.x, p.y, p.size * 2.5, 0, Math.PI * 2)
+            ctx.fill()
+          }
+
+          // Main flake — slightly warm tint for close ones
+          const brightness = Math.floor(200 + p.z * 55)
+          ctx.fillStyle = `rgba(${brightness},${brightness + 10},255,${0.7 + p.z * 0.3})`
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+          ctx.fill()
+
+          // Inner highlight for close particles
+          if (p.z > 0.5) {
+            ctx.fillStyle = `rgba(255,255,255,${p.z * 0.4})`
+            ctx.beginPath()
+            ctx.arc(p.x - p.size * 0.2, p.y - p.size * 0.2, p.size * 0.4, 0, Math.PI * 2)
+            ctx.fill()
+          }
+        }
+      }
+      ctx.globalAlpha = 1
+      animRef.current = requestAnimationFrame(draw)
+    }
+
+    animRef.current = requestAnimationFrame(draw)
+    return () => cancelAnimationFrame(animRef.current)
+  }, [type, initParticles])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', width: '100%', height: '100%' }}
+    />
+  )
+}
+
+function RainAnimation() {
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+      <WeatherCanvas type="rain" />
     </div>
   )
 }
@@ -168,33 +339,9 @@ function ThunderAnimation() {
 }
 
 function SnowAnimation() {
-  const flakes = Array.from({length:20}, (_, i) => ({
-    left: `${(i * 5.1) % 100}%`,
-    size: `${5 + (i % 5) * 2}px`,
-    delay: `${(i * 0.25) % 3}s`,
-    dur: `${2.5 + (i % 5) * 0.6}s`,
-    drift: `${(i % 2 === 0 ? 1 : -1) * (6 + (i % 4) * 4)}px`,
-    opacity: 0.5 + (i % 4) * 0.1,
-  }))
   return (
-    <div style={{ position:'absolute', inset:0, overflow:'hidden', pointerEvents:'none' }}>
-      <style>{`
-        @keyframes snowfall {
-          0%{transform:translateY(-10px) translateX(0);opacity:0}
-          10%{opacity:1}
-          90%{opacity:0.7}
-          100%{transform:translateY(110%) translateX(var(--drift));opacity:0}
-        }
-      `}</style>
-      {flakes.map((f, i) => (
-        <div key={i} style={{
-          position:'absolute', top:0, left:f.left,
-          width:f.size, height:f.size, borderRadius:'50%',
-          background:'rgba(210,230,255,0.9)', opacity:f.opacity,
-          ['--drift' as string]: f.drift,
-          animation:`snowfall ${f.dur} ease-in ${f.delay} infinite`,
-        }} />
-      ))}
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+      <WeatherCanvas type="snow" />
     </div>
   )
 }

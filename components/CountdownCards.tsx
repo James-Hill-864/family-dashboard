@@ -37,7 +37,8 @@ export default function CountdownCards() {
 
   return (
     <div style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '8px 16px', flexShrink: 0 }}>
-      {items.map(item => {
+      <style>{`@keyframes countdownSlideIn { from { transform: translateY(10px) scale(0.95); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }`}</style>
+      {items.map((item, i) => {
         const icon = TYPE_ICONS[item.type] || TYPE_ICONS[
           item.title.toLowerCase().includes('birthday') ? 'birthday' :
           item.title.toLowerCase().includes('vacation') ? 'vacation' : 'countdown'
@@ -48,6 +49,7 @@ export default function CountdownCards() {
             borderRadius: 12, background: 'rgba(255,255,255,0.03)',
             border: `1px solid ${item.color}30`,
             display: 'flex', alignItems: 'center', gap: 8,
+            animation: `countdownSlideIn 0.3s ease-out ${i * 0.08}s both`,
           }}>
             <div style={{ fontSize: 20 }}>{icon}</div>
             <div style={{ flex: 1, minWidth: 0 }}>

@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 
 interface Member {
   id: string; name: string; color: string; emoji: string; role: string
-  googleCalendarId?: string; googleAccessToken?: string
+  googleCalendarId?: string; googleConnected?: boolean
   phoneNumber?: string; notificationPrefs?: string
   email?: string; agendaEmailEnabled?: boolean; agendaEmailTime?: string
   eventReminderMinutes?: number
@@ -157,7 +157,7 @@ function MemberRow({ member, onUpdated }: { member: Member; onUpdated: () => voi
     finally { setSyncing(false) }
   }
 
-  const hasGoogle = !!member.googleAccessToken
+  const hasGoogle = !!member.googleConnected
 
   return (
     <div className="rounded-2xl p-4 flex flex-col gap-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>

@@ -8,10 +8,13 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GOOGLE_CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3'
 const GOOGLE_DRIVE_BASE = 'https://www.googleapis.com/drive/v3'
 
+const GOOGLE_PHOTOS_BASE = 'https://photoslibrary.googleapis.com/v1'
+
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/photoslibrary.readonly',
 ]
 
 // ---------------------------------------------------------------------------
@@ -383,4 +386,52 @@ export async function getPhotoAlbums(accessToken: string): Promise<GoogleAlbum[]
     id: f.id,
     title: f.name,
   }))
+}
+
+/**
+ * Fetches photos taken "on this day" (same month/day) from previous years
+ * using the Google Photos Library API.
+ */
+export async function getOnThisDayPhotos(
+  accessToken: string,
+  month: number,
+  day: number,
+): Promise<Array<{ id: string; baseUrl: string; year: number; name?: string }>> {
+  const res = await fetch(`${GOOGLE_PHOTOS_BASE}/mediaItems:search`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      pageSize: 50,
+      filters: {
+        dateFilter: {
+          dates: [{ month, day, year: 0 }],
+        },
+        mediaTypeFilter: { mediaTypes: ['PHOTO'] },
+      },
+    }),
+  })
+
+  if (!res.ok) {
+    console.error(`[google/photos] On this day failed: HTTP ${res.status} — ${await res.text()}`)
+    return []
+  }
+
+  interface PhotoItem {
+    id: string
+    baseUrl: string
+    filename?: string
+    mediaMetadata?: { creationTime?: string }
+  }
+  const data = (await res.json()) as { mediaItems?: PhotoItem[] }
+  const items = data.mediaItems ?? []
+
+  return items.map(item => ({
+    id: item.id,
+    baseUrl: `${item.baseUrl}=w1920-h1200`,
+    year: item.mediaMetadata?.creationTime ? new Date(item.mediaMetadata.creationTime).getFullYear() : 0,
+    name: item.filename,
+  })).sort(() => Math.random() - 0.5)
 }

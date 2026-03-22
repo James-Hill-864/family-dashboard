@@ -20,16 +20,17 @@ export default function QuickAddEvent({ members, onSaved }: Props) {
     if (!title.trim() || !memberId) return
     setSaving(true)
     try {
+      // Store all-day events as UTC midnight to match Google Calendar format
       const now = new Date()
-      now.setHours(0, 0, 0, 0)
-      const end = new Date(now)
-      end.setHours(23, 59, 59, 999)
+      const y = now.getFullYear(), m = now.getMonth(), d = now.getDate()
+      const startUTC = new Date(Date.UTC(y, m, d))
+      const endUTC = new Date(Date.UTC(y, m, d + 1))
       await fetch('/api/events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: title.trim(), memberId, allDay: true, type: 'appointment',
-          startTime: now.toISOString(), endTime: end.toISOString(), source: 'local',
+          startTime: startUTC.toISOString(), endTime: endUTC.toISOString(), source: 'local',
         }),
       })
       setOpen(false)

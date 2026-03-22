@@ -12,6 +12,17 @@ interface Member { id: string; name: string; color: string; emoji: string }
 interface MealPlan { id: string; day: number; mealType: string; name: string }
 interface Props { filterMemberIds?: string[] }
 
+function formatDuration(startStr: string, endStr: string, allDay?: boolean): string {
+  if (allDay) return ''
+  const ms = new Date(endStr).getTime() - new Date(startStr).getTime()
+  if (ms <= 0) return ''
+  const totalMin = Math.round(ms / 60000)
+  if (totalMin < 60) return `${totalMin}m`
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return m > 0 ? `${h}h${m}m` : `${h}h`
+}
+
 export default function TodayTab({ filterMemberIds }: Props) {
   const [utilTab, setUtilTab] = useState<UtilTab>('todo')
   const [events, setEvents] = useState<CalEvent[]>([])
@@ -71,6 +82,10 @@ export default function TodayTab({ filterMemberIds }: Props) {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <style>{`
+        @keyframes slideInRight { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeInUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      `}</style>
 
       {/* Weather */}
       <div style={{ flexShrink: 0, height: 155, overflow: 'hidden', position: 'relative', borderBottom: '1px solid #1a1d2e' }}>
@@ -138,6 +153,7 @@ export default function TodayTab({ filterMemberIds }: Props) {
                           <div style={{ fontSize: 10, color: '#6b7280' }}>
                             {d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                             {!e.allDay && ` · ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}
+                            {formatDuration(e.startTime, e.endTime, e.allDay) && ` · ${formatDuration(e.startTime, e.endTime, e.allDay)}`}
                           </div>
                         </div>
                       </div>
@@ -151,9 +167,10 @@ export default function TodayTab({ filterMemberIds }: Props) {
                 </div>
               )}
             </div>
-          ) : visibleEvents.map((e: CalEvent) => {
+          ) : visibleEvents.map((e: CalEvent, i: number) => {
             const member = members.find((m: Member) => m.id === e.memberId)
-            const timeStr = e.allDay ? 'All day' : new Date(e.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+            const dur = formatDuration(e.startTime, e.endTime, e.allDay)
+            const timeStr = e.allDay ? 'All day' : new Date(e.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) + (dur ? ` · ${dur}` : '')
             const hasAvatarError = avatarErrors.has(e.memberId)
             return (
               <div key={e.id} style={{
@@ -162,6 +179,7 @@ export default function TodayTab({ filterMemberIds }: Props) {
                 borderBottom: '1px solid rgba(255,255,255,0.04)',
                 borderLeft: `3px solid ${member?.color || '#3b82f6'}`,
                 background: 'rgba(255,255,255,0.015)',
+                animation: `slideInRight 0.3s ease-out ${i * 0.06}s both`,
               }}>
                 <span style={{ fontSize: 11, color: '#6b7280', width: 44, flexShrink: 0, fontWeight: 500 }}>{timeStr}</span>
                 <span style={{ fontSize: 13, color: '#e2e8f0', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{e.title}</span>
